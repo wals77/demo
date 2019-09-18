@@ -9,10 +9,11 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
-import org.springframework.boot.context.properties.ConfigurationBeanFactoryMetaData;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
+
+import java.util.HashMap;
 
 /**
  * rabbitmq 配置
@@ -47,8 +48,8 @@ public class RabbitmqConfig {
     private String virtualHost;
 
     public static final String EXCHANGE_A = "my-mq-exchange_A";
-    public static final String EXCHANGE_B = "my-mq-exchange_B";
-    public static final String EXCHANGE_C = "my-mq-exchange_C";
+    public static final String DEAD_EXCHANGE_FOR_A = "dead-exchange-for_A";
+    public static final String DEAD_EXCHANGE_FOR_B = "dead_exchange_for_B";
 
 
     public static final String QUEUE_A = "QUEUE_A";
@@ -84,12 +85,53 @@ public class RabbitmqConfig {
     }
 
     @Bean
+    public DirectExchange directDeadExchange(){
+        return new DirectExchange(DEAD_EXCHANGE_FOR_A);
+    }
+
+    @Bean
+    public DirectExchange directDeadExchangeB(){
+        return new DirectExchange(DEAD_EXCHANGE_FOR_B);
+    }
+
+    @Bean
     public Queue queue(){
-        return new Queue(QUEUE_A);
+        HashMap arguments = new HashMap();
+        arguments.put("x-message-ttl",10000);   //消息过期10秒
+
+        //这两个参数必须都写
+        arguments.put("x-dead-letter-exchange",DEAD_EXCHANGE_FOR_A);    //死信交换器
+        arguments.put("x-dead-letter-routing-key",ROUTINGKEY_B);    //死信路由
+
+        return new Queue(QUEUE_A,true,false,false, arguments);
+    }
+
+    @Bean
+    public Queue queueB(){
+        HashMap arguments = new HashMap();
+        //这两个参数必须都写
+        arguments.put("x-dead-letter-exchange",DEAD_EXCHANGE_FOR_B);    //死信交换器
+        arguments.put("x-dead-letter-routing-key",ROUTINGKEY_C);    //死信路由
+        return new Queue(QUEUE_B,true,false,false, arguments);
+    }
+
+    @Bean
+    public Queue queueC(){
+        return new Queue(QUEUE_C);
     }
 
     @Bean
     public Binding binding(){
         return BindingBuilder.bind(queue()).to(directExchange()).with(ROUTINGKEY_A);
+    }
+
+    @Bean
+    public Binding binding_deadB(){  //死信交换器绑定队列
+        return BindingBuilder.bind(queueB()).to(directDeadExchange()).with(ROUTINGKEY_B);
+    }
+
+    @Bean
+    public Binding binding_deadC(){  //死信交换器绑定队列
+        return BindingBuilder.bind(queueC()).to(directDeadExchangeB()).with(ROUTINGKEY_C);
     }
 }
